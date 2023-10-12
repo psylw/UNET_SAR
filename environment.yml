@@ -1,0 +1,36 @@
+name: ats780
+channels:
+ - conda-forge
+dependencies:
+ - python=3.8
+ - numpy
+ - matplotlib
+ - cartopy
+ - jupyter
+ - pandas
+ - pip
+ - xarray
+ - ipywidgets
+ - jupyterlab
+ - netcdf4
+ - cfgrib
+ - pygrib
+ - geopandas
+ - dask
+ - regionmask
+ - pygeos
+ - rioxarray
+ - pyarrow
+ - scikit-image
+ - scikit-learn
+ - seaborn
+ - xesmf
+ - earthengine-api
+ - pip:
+    - python-awips
+    - wget
+    - boto3
+    - botocore
+    - imblearn
+    - xgboost
+    - scikit-lego
