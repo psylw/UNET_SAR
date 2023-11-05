@@ -34,3 +34,4 @@ dependencies:
     - imblearn
     - xgboost
     - scikit-lego
+    - torch

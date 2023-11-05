@@ -1,110 +1,94 @@
 # get sentinel1 file closest to labeled image date
+# how to deal with compose the full AOI image cover by compositing two adjacent scenes in this case
+# deleted 48 because images need to be composed
+# https://developers.google.com/earth-engine/tutorials/community/sar-basics#sentinel-1_coverage
+
 # %%
-
-mode = 'IW'
-
 import ee
-# Trigger the authentication flow.
-ee.Authenticate()
-
-# Initialize the library.
-ee.Initialize()
-
 import matplotlib.pyplot as plt
 import numpy as np
-import rioxarray
-
-# loop through all 90 images
-# import labeled AOI, reproject, assign box coordinates
-
-# open file
-
-# reproject
-# what is sentinel1 crs???
-# %%
+import rioxarray as rxr
 from os import listdir
-filenames = listdir(data_folder+'\\other_usgs')
+import os
+from datetime import datetime
+
+# Trigger the authentication flow.# Initialize the library.
+ee.Authenticate()
+ee.Initialize()
+# %%
+filenames = listdir(os.getcwd()+'\\labels')
+dates = [filenames[i][6:-4] for i in range(90)]
+
 
 # %%
-lat1,lon1 = aoi.lat.min(),aoi.lon.min()
-lat2,lon2 = aoi.lat.max(),aoi.lon.min()
-lat3,lon3 = aoi.lat.max(),aoi.lon.max()
-lat4,lon4 = aoi.lat.min(),aoi.lon.max()
+for i in range(len(filenames)):
+    print(i)
+    label = rxr.open_rasterio('labels\\'+filenames[i])
+    label = label.rio.reproject("EPSG:4326")
 
-date2,date1 = aoi_date, aoi_date- 6days
+    date = dates[i]
+    date = datetime.strptime(date, "%Y%m%d").strftime("%Y-%m-%d")
 
-geoJSON = {
-  "type": "FeatureCollection",
-  "features": [
-    {
-      "type": "Feature",
-      "properties": {},
-      "geometry": {
-        "type": "Polygon",
-        "coordinates": [
-          [
-            [
-              lon1,
-              lat1
-            ],
-            [
-              lon2,
-              lat2
-            ],
-            [
-              lon3,
-              lat3
-            ],
-            [
-              lon4,
-              lat4
-            ],
-            [
-              lon1,
-              lat1
-            ]
-          ]
-        ]
-      }
-    }
-  ]
-}
-coords = geoJSON['features'][0]['geometry']['coordinates']
-aoi = ee.Geometry.Polygon(coords)
+    lat1,lon1 = float(label.y.min().values),float(label.x.min().values)
+    lat2,lon2 = float(label.y.max().values),float(label.x.min().values)
+    lat3,lon3 = float(label.y.max().values),float(label.x.max().values)
+    lat4,lon4 = float(label.y.min().values),float(label.x.max().values)
 
-im_coll = (ee.ImageCollection('COPERNICUS/S1_GRD_FLOAT')
-           .filterBounds(aoi)
-           .filterDate(ee.Date(date1),ee.Date(date2))
-           #.filter(ee.Filter.eq('orbitProperties_pass', 'DESCENDING'))
-           #.filter(ee.Filter.eq('relativeOrbitNumber_start', 154))
-           .map(lambda img: img.set('date', ee.Date(img.date()).format('YYYYMMdd')))
-           .sort('date'))
+    geojson_object = {
+        'type': 'Polygon',
+        'coordinates': [[[lon1,lat1],[lon2,lat2],[lon3,lat3],[lon4,lat4],[lon1,lat1]]]}
 
-timestamplist = (im_coll.aggregate_array('date')
-                 .map(lambda d: ee.String('T').cat(ee.String(d)))
-                 .getInfo())
-timestamplist
+    aoi = ee.Geometry(geojson_object)
 
-# select data closest to labeled image date
-select ejfeijf 
+    endDate = ee.Date(date)
+    endDate = endDate.advance(1, 'days')
+    startDate = endDate.advance(-10, 'days')
 
-# clip image to date
-def clip_img(img):
-    """Clips a list of images."""
-    return ee.Image(img).clip(aoi)
+    POLARIZATION = ['HH','HV','VV','VH'] 
+    for j in POLARIZATION:
+        im_coll = (ee.ImageCollection('COPERNICUS/S1_GRD')
+                .filterBounds(aoi)
+                .filterDate(startDate,endDate)
+                .map(lambda img: img.set('date', ee.Date(img.date()).format('YYYYMMdd')))
+                .sort('date')
+                .sort('system:time_start', False)
+                .filter(ee.Filter.listContains('transmitterReceiverPolarisation', j))
+                .select(j))
 
-im_list = im_coll.toList(im_coll.size())
-im_list = ee.List(im_list.map(clip_img))
 
-im_list.length().getInfo()
+        timestamplist = (im_coll.aggregate_array('date')
+                        .map(lambda d: ee.String('T').cat(ee.String(d)))
+                        .getInfo())
+        print(date)
+        print(timestamplist)
 
-# save clip
+        try:
+            # convert collection to list, select data closest to labeled image date and clip image to date
+            def clip_img(img):
+                """Clips a list of images."""
+                return ee.Image(img).clip(aoi)
 
-# look at image
-# look at histogram
+            im_list = im_coll.toList(im_coll.size())
+            im_list = ee.List(im_list.map(clip_img))
 
-# deal with speckle?
-# save as numpy? --regrid to what?
+            recent = ee.Image(im_list.get(0))
 
-# get S1_GRD_FLOAT
-# make sure sample covers entire AOI, if it doesn't orbits, modes, swaths and scenes need to match
+            # save clip, same resolution as labeled image
+
+            projection = recent.projection().getInfo()
+
+
+            task = ee.batch.Export.image.toDrive(image=recent,
+                                                description=filenames[i][0:5],
+                                                region = aoi,
+                                                fileNamePrefix=filenames[i][0:5]+j+timestamplist[0],
+                                                crs=projection['crs'],
+                                                crsTransform= projection['transform'],
+                                                fileFormat='GeoTIFF')
+            task.start()
+        except Exception:
+            print('missing '+filenames[i][0:5])
+            pass
+
+
+# %%
