@@ -11,16 +11,20 @@ transform= transforms.Compose([
     #transforms.Normalize(), # open all images to get std and mean
     transforms.ToTensor()
 ])
-
-target_transform = transforms.Compose([
+'''target_transform = transforms.Compose([
     transforms.ToTensor(),
     #transforms.ToPILImage(),
     transforms.Lambda(lambda y: torch.zeros(3, dtype=torch.float).scatter_(0, torch.tensor(y), value=1))
     
 ])
+'''
+root_dir = os.getcwd()
+image_folder = os.path.join(root_dir, 'images')
+images = os.listdir(image_folder)
+images_train = images[0:116]
 
 # Create an instance of the custom test dataset
-custom_test_dataset = CustomSegmentationDataset(os.getcwd(), transform=transform,  target_transform=target_transform)
+custom_test_dataset = CustomSegmentationDataset(os.getcwd(), transform=transform,image_files=images_train)
 
 # Create a DataLoader for the test dataset
 batch_size = 1  # Use a batch size of 1 for testing to go through patches one at a time

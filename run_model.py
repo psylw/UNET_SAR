@@ -5,7 +5,12 @@ import numpy as np
 from torchvision import transforms
 import torch
 from CustomSegmentationDataset import CustomSegmentationDataset
-from model import UNet
+from unet_model import UNet
+from torch import nn
+import matplotlib.pyplot as plt
+os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
+
+
 
 import torch.optim as optim
 
@@ -31,12 +36,6 @@ transform= transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize(mean = mean, std = std), # open all images to get std and mean
 ])
-
-target_transform = transforms.Compose([
-    transforms.ToTensor(),
-    transforms.Lambda(lambda y: torch.zeros(3, dtype=torch.float).scatter_(0, torch.tensor(y), value=1))
-    
-])
 # %%
 # Split your data into training and testing sets
 images_train = images[0:116]
@@ -46,14 +45,14 @@ images_test = images[117:]
 train_dataset = CustomSegmentationDataset(
     root_dir=root_dir,
     transform=transform,
-    target_transform=target_transform,
+    #target_transform=target_transform,
     image_files=images_train,
 )
 
 test_dataset = CustomSegmentationDataset(
     root_dir=root_dir,
     transform=transform,
-    target_transform=target_transform,
+    #target_transform=target_transform,
     image_files=images_test,
 )
 
@@ -72,19 +71,26 @@ device = (
 )
 print(f"Using {device} device")
 # %%
-model = UNet()
+model = UNet(n_channels=1, n_classes=3)
 
 
 # %%
 learning_rate = 1e-3
 epochs = 5
 
-# Initialize the loss function
-def dice_loss(predicted, target):
-    intersection = (predicted * target).sum()
-    union = predicted.sum() + target.sum()
-    dice = 1 - (2 * intersection + 1e-5) / (union + 1e-5)
-    return dice
+def dice_loss(y_pred, y_true, num_classes=3):
+    dice_loss = 0
+    for class_id in range(num_classes):
+        y_pred_class = y_pred[:, class_id]
+        y_true_class = (y_true == class_id).float()
+        
+        intersection = torch.sum(y_pred_class * y_true_class)
+        union = torch.sum(y_pred_class) + torch.sum(y_true_class)
+        
+        dice_class = 2 * intersection / (union + 1e-5)  # Adding a small epsilon to avoid division by zero
+        dice_loss += (1 - dice_class)
+
+    return dice_loss / num_classes
 
 criterion = dice_loss
 
@@ -108,6 +114,16 @@ def train_loop(dataloader, model, loss_fn, optimizer):
         optimizer.zero_grad()
 
         if batch % 100 == 0:
+            temp1 = pred.argmax(dim=1)[0].numpy()
+            temp2 = y[0].numpy()
+            
+            plt.imshow(X[0,0,:,:])
+            plt.show()
+            plt.imshow(temp1)
+            plt.show()
+            plt.imshow(temp2)
+            plt.show()
+
             loss, current = loss.item(), (batch + 1) * len(X)
             print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
 
@@ -131,7 +147,6 @@ def test_loop(dataloader, model, loss_fn):
     test_loss /= num_batches
     correct /= size
     print(f"Test Error: \n Accuracy: {(100*correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
-
 # %%
 
 for t in range(epochs):

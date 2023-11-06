@@ -24,7 +24,7 @@ class CustomSegmentationDataset(Dataset):
                     self.masks.append(j)
 
     def __len__(self):
-        return len(self.image_folder) * len(self.patches)
+        return len(self.images) * len(self.patches)
 
     def __getitem__(self, idx):
 
@@ -35,10 +35,9 @@ class CustomSegmentationDataset(Dataset):
         mask_name = self.masks[image_idx]
 
         image = np.load(os.path.join(self.image_folder,image_name)).astype(np.float32)
-        mask = np.load(os.path.join(self.mask_folder,mask_name)).astype(np.float32)
+        mask = np.load(os.path.join(self.mask_folder,mask_name))
 
         image[np.isnan(image)] = 0
-        mask[np.isnan(mask)] = 0
 
         # Crop and transform the specified patch
         left, upper, right, lower = self.patches[patch_idx]
@@ -52,6 +51,9 @@ class CustomSegmentationDataset(Dataset):
             image = self.transform(image)
         if self.target_transform:
             mask = self.transform(mask)
+
+        mask = torch.from_numpy(mask)
+        mask = mask.type(torch.LongTensor)
 
         return image, mask
 
